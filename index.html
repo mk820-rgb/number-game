@@ -3,95 +3,76 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>数字でやっつけろ！</title>
+    <title>怪獣をやっつけろ！</title>
     <style>
-        body { text-align: center; font-family: sans-serif; background: #f0f0f0; margin: 0; padding-top: 50px; touch-action: manipulation; }
-        #msg { font-size: 20px; color: #333; height: 30px; margin-bottom: 20px; }
-        #enemy { font-size: 100px; transition: 0.5s; display: block; margin: 0 auto; }
-        #number { font-size: 150px; font-weight: bold; color: #ff4444; margin: 20px 0; }
-        .dead { transform: scale(0) rotate(360deg); opacity: 0; }
-        #debug { font-size: 12px; color: #999; margin-top: 50px; padding: 10px; }
-        button { padding: 15px 30px; font-size: 18px; border-radius: 10px; border: none; background: #007bff; color: white; }
+        body { text-align: center; font-family: sans-serif; background: #f0f0f0; margin: 0; padding-top: 30px; overflow: hidden; }
+        #msg { font-size: 20px; color: #333; height: 30px; margin-bottom: 10px; }
+        
+        #enemy-img { width: 200px; height: auto; transition: 0.3s; display: block; margin: 0 auto; }
+        
+        #number { font-size: 150px; font-weight: bold; color: #ff4444; margin: 10px 0; }
+        
+        /* B案：爆発して玉砕するアニメーション */
+        @keyframes explodeAction {
+            0% { transform: scale(1); opacity: 1; filter: brightness(1); }
+            50% { transform: scale(1.5); opacity: 0.8; filter: brightness(5) hue-rotate(-90deg); } /* 光って膨らむ */
+            100% { transform: scale(2); opacity: 0; } /* 拡大して消える */
+        }
+        .explode { animation: explodeAction 0.6s forwards ease-out; }
+
+        @keyframes shake {
+            0% { transform: translate(0px, 0px); } 25% { transform: translate(-10px, 10px); }
+            50% { transform: translate(10px, -10px); } 75% { transform: translate(-10px, 10px); } 100% { transform: translate(0px, 0px); }
+        }
+        .shake-screen { animation: shake 0.5s; }
+        button { padding: 15px 30px; font-size: 18px; border-radius: 10px; border: none; background: #e74c3c; color: white; box-shadow: 0 4px 0 #c0392b; }
     </style>
 </head>
-<body>
-
-    <div id="msg">下のボタンをおしてね！</div>
-    <div id="enemy">👾</div>
+<body id="body">
+    <div id="msg">ボタンをおして開始！</div>
+    <img id="enemy-img" src="kaiju.png" alt="怪獣">
     <div id="number"></div>
-    
-    <button id="startBtn">スタート！</button>
+    <button id="startBtn">たたかう！</button>
 
-    <div id="debug"></div> <script>
-        const enemy = document.getElementById('enemy');
+    <script>
+        const enemyImg = document.getElementById('enemy-img');
         const numberDisplay = document.getElementById('number');
         const msg = document.getElementById('msg');
-        const debug = document.getElementById('debug');
         const startBtn = document.getElementById('startBtn');
-        
-        let targetNumber;
-        let recognition;
+        const body = document.getElementById('body');
+        let targetNumber; let recognition;
+        // 爆発音
+        const seExplode = new Audio('https://otologic.jp/free/se/bin/explosion01.mp3');
 
-        // 音声認識の準備
-        try {
-            const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-            if (!SpeechRecognition) {
-                debug.innerText = "エラー: お使いのブラウザは音声認識に対応していません。Safariで開いてください。";
-            } else {
-                recognition = new SpeechRecognition();
-                recognition.lang = 'ja-JP';
-                recognition.continuous = true; // 連続して聴き取る
-                recognition.interimResults = false;
-            }
-        } catch (e) {
-            debug.innerText = "準備エラー: " + e.message;
+        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+        if (SpeechRecognition) {
+            recognition = new SpeechRecognition();
+            recognition.lang = 'ja-JP'; recognition.continuous = true;
         }
-
         function spawn() {
             targetNumber = Math.floor(Math.random() * 10);
             numberDisplay.innerText = targetNumber;
-            enemy.classList.remove('dead');
-            msg.innerText = "数字を読んでね！";
+            enemyImg.classList.remove('explode'); // クラスを戻す
+            msg.innerText = "数字をよんで攻撃だ！";
         }
-
-        // スタートボタンを押した時の処理
         startBtn.onclick = () => {
             if (!recognition) return;
-            
-            try {
-                recognition.start();
-                startBtn.style.display = 'none'; // ボタンを隠す
-                spawn();
-                msg.innerText = "きいてるよ...（こえをだしてね）";
-            } catch (e) {
-                debug.innerText = "起動失敗: " + e.message;
-            }
+            seExplode.play().then(() => { seExplode.pause(); seExplode.currentTime = 0; });
+            recognition.start(); startBtn.style.display = 'none'; spawn();
         };
-
-        // 声を聞き取った時
         if (recognition) {
             recognition.onresult = (event) => {
                 const transcript = event.results[event.results.length - 1][0].transcript;
-                debug.innerText = "聞き取った音: " + transcript;
-
                 if (transcript.includes(targetNumber.toString())) {
-                    msg.innerText = "アタリ！すごい！";
-                    enemy.classList.add('dead');
+                    seExplode.play(); // 爆発音
+                    body.classList.add('shake-screen'); setTimeout(() => body.classList.remove('shake-screen'), 500);
+                    
+                    msg.innerText = "ドカーン！たおした！";
+                    enemyImg.classList.add('explode'); // 爆発アニメーション開始
                     setTimeout(spawn, 1500);
                 }
             };
-
-            recognition.onerror = (event) => {
-                debug.innerText = "エラー発生: " + event.error;
-                if (event.error === 'not-allowed') {
-                    msg.innerText = "マイクの使用を許可してください";
-                }
-            };
-
-            // 途切れても自動で再開
-            recognition.onend = () => {
-                recognition.start();
-            };
+            recognition.onend = () => recognition.start();
         }
     </script>
 </body>
