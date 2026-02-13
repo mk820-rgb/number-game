@@ -8,7 +8,7 @@
         body { text-align: center; font-family: sans-serif; background: #f0f0f0; margin: 0; padding-top: 30px; overflow: hidden; }
         #msg { font-size: 20px; color: #333; height: 30px; margin-bottom: 10px; font-weight: bold; }
         #enemy-img { width: 280px; height: auto; transition: 0.3s; display: block; margin: 0 auto; filter: drop-shadow(0 10px 20px rgba(0,0,0,0.3)); }
-        #number { font-size: 160px; font-weight: bold; color: #ff4444; margin: 10px 0; text-shadow: 2px 2px 0 #fff; }
+        #number { font-size: 160px; font-weight: bold; color: #ff4444; margin: 10px 0; }
         
         /* 爆発アニメーション */
         @keyframes explodeAction {
@@ -18,25 +18,13 @@
         }
         .explode { animation: explodeAction 0.6s forwards ease-out; }
 
-        /* 画面を揺らす */
         @keyframes shake {
             0% { transform: translate(0px, 0px); } 25% { transform: translate(-10px, 10px); }
             50% { transform: translate(10px, -10px); } 75% { transform: translate(-10px, 10px); } 100% { transform: translate(0px, 0px); }
         }
         .shake-screen { animation: shake 0.5s; }
         
-        /* 聞き取った文字の表示エリア */
-        #heard-text {
-            position: fixed;
-            bottom: 20px;
-            left: 0;
-            width: 100%;
-            font-size: 14px;
-            color: #888; /* 灰色の字 */
-            text-align: center;
-            pointer-events: none;
-        }
-
+        #heard-text { position: fixed; bottom: 20px; left: 0; width: 100%; font-size: 14px; color: #888; text-align: center; }
         button { padding: 20px 40px; font-size: 24px; border-radius: 15px; border: none; background: #e74c3c; color: white; box-shadow: 0 6px 0 #c0392b; font-weight: bold; }
     </style>
 </head>
@@ -44,8 +32,7 @@
     <div id="msg">ボタンをおして開始！</div>
     <img id="enemy-img" src="kaiju.png" alt="怪獣">
     <div id="number"></div>
-    <button id="startBtn">たたかう！</button>
-
+    <button id="startBtn">スタート！</button>
     <div id="heard-text"></div>
 
     <script>
@@ -59,6 +46,7 @@
         let targetNumber;
         let recognition;
 
+        // 音源の定義
         const seSpawn = new Audio('https://otologic.jp/free/se/bin/pop01.mp3');
         const seCorrect = new Audio('https://otologic.jp/free/se/bin/quiz-correct03.mp3');
         const seExplode = new Audio('https://otologic.jp/free/se/bin/explosion01.mp3');
@@ -69,22 +57,23 @@
             recognition = new SpeechRecognition();
             recognition.lang = 'ja-JP';
             recognition.continuous = true;
-            recognition.interimResults = true; // 喋っている途中の文字も取得する
+            recognition.interimResults = true; // 画面表示用に途中経過は取る
         }
 
         function spawn() {
             targetNumber = Math.floor(Math.random() * 10);
             numberDisplay.innerText = targetNumber;
             enemyImg.classList.remove('explode');
-            msg.innerText = "数字をよんで攻撃だ！";
-            heardTextDisplay.innerText = ""; // 次の問題でリセット
-            seSpawn.play();
+            msg.innerText = "数字をよんでね！";
+            heardTextDisplay.innerText = "";
+            seSpawn.play().catch(e => console.log("再生失敗:", e));
         }
 
         startBtn.onclick = () => {
             if (!recognition) return;
+            // 重要：タップ時にすべての音を鳴らしてロック解除
             [seSpawn, seCorrect, seExplode, seIncorrect].forEach(s => {
-                s.play().then(() => { s.pause(); s.currentTime = 0; });
+                s.play().then(() => { s.pause(); s.currentTime = 0; }).catch(() => {});
             });
             recognition.start();
             startBtn.style.display = 'none';
@@ -93,32 +82,34 @@
 
         if (recognition) {
             recognition.onresult = (event) => {
-                let transcript = "";
-                for (let i = event.resultIndex; i < event.results.length; i++) {
-                    transcript += event.results[i][0].transcript;
-                }
-                
-                // 画面下に聞き取った内容を表示
-                heardTextDisplay.innerText = "ききとった： " + transcript;
+                let interimTranscript = '';
+                let finalTranscript = '';
 
-                // 確定した結果（isFinal）または一定の長さで判定
-                if (transcript.includes(targetNumber.toString())) {
+                for (let i = event.resultIndex; i < event.results.length; ++i) {
+                    if (event.results[i].isFinal) {
+                        finalTranscript += event.results[i][0].transcript;
+                    } else {
+                        interimTranscript += event.results[i][0].transcript;
+                    }
+                }
+
+                // 画面下の表示は途中経過も含める
+                heardTextDisplay.innerText = "ききとった： " + (finalTranscript || interimTranscript);
+
+                // 【修正ポイント】確定した言葉（finalTranscript）の中に数字があるかだけをチェックする
+                if (finalTranscript.includes(targetNumber.toString())) {
                     seCorrect.play();
                     setTimeout(() => seExplode.play(), 200);
                     body.classList.add('shake-screen');
                     setTimeout(() => body.classList.remove('shake-screen'), 500);
                     msg.innerText = "ドカーン！たおした！";
                     enemyImg.classList.add('explode');
-                    // 判定が通ったら表示を少し強調して消す
-                    heardTextDisplay.style.color = "#444"; 
                     setTimeout(spawn, 2000);
-                } else if (/\d/.test(transcript) && transcript.length > 0) {
-                    // 数字を言ったけど外れている場合
-                    // 短い音節だと誤爆しやすいので、少し様子を見る
-                    if (!transcript.includes(targetNumber.toString()) && event.results[event.results.length-1].isFinal) {
-                        seIncorrect.play();
-                        msg.innerText = "ざんねん！ちがう数字だ！";
-                    }
+                } 
+                else if (finalTranscript !== "" && /\d/.test(finalTranscript)) {
+                    // 数字を言ったが、正解ではなかった場合のみ「ぶっぶー」
+                    seIncorrect.play();
+                    msg.innerText = "ざんねん！ちがう数字だ！";
                 }
             };
             recognition.onend = () => recognition.start();
