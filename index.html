@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>数字でやっつけろ！</title>
+    <style>
+        body { text-align: center; font-family: sans-serif; background: #f0f0f0; overflow: hidden; }
+        #enemy { font-size: 100px; margin-top: 50px; transition: 0.5s; }
+        #number { font-size: 120px; font-weight: bold; color: red; }
+        #msg { font-size: 24px; color: #333; }
+        .dead { transform: scale(0) rotate(360deg); opacity: 0; }
+    </style>
+</head>
+<body>
+
+    <div id="msg">数字をよんでね！</div>
+    <div id="enemy">👾</div> <div id="number"></div> <script>
+        const enemy = document.getElementById('enemy');
+        const numberDisplay = document.getElementById('number');
+        const msg = document.getElementById('msg');
+        
+        let targetNumber;
+
+        // 1. 新しい数字と敵を出す
+        function spawn() {
+            targetNumber = Math.floor(Math.random() * 10); // 0-9のランダム
+            numberDisplay.innerText = targetNumber;
+            enemy.classList.remove('dead');
+            msg.innerText = "こえをだして！";
+        }
+
+        // 2. 音声認識の設定 (iPhone Safari対応)
+        const SpeechRecognition = window.webkitSpeechRecognition;
+        const recognition = new SpeechRecognition();
+        recognition.lang = 'ja-JP';
+        recognition.continuous = true;
+
+        // 3. 声を聴き取った時の処理
+        recognition.onresult = (event) => {
+            const transcript = event.results[event.results.length - 1][0].transcript;
+            console.log("聞き取った言葉:", transcript);
+
+            if (transcript.includes(targetNumber.toString())) {
+                msg.innerText = "アタリ！せいかい！";
+                enemy.classList.add('dead');
+                setTimeout(spawn, 1500); // 1.5秒後に次へ
+            } else {
+                msg.innerText = `「${transcript}」かな？ おしい！`;
+            }
+        };
+
+        // 画面をタップしたら開始
+        window.onclick = () => {
+            recognition.start();
+            spawn();
+            msg.innerText = "きいてるよ...";
+        };
+    </script>
+</body>
+</html>
