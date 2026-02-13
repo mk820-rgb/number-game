@@ -2,60 +2,97 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>数字でやっつけろ！</title>
     <style>
-        body { text-align: center; font-family: sans-serif; background: #f0f0f0; overflow: hidden; }
-        #enemy { font-size: 100px; margin-top: 50px; transition: 0.5s; }
-        #number { font-size: 120px; font-weight: bold; color: red; }
-        #msg { font-size: 24px; color: #333; }
+        body { text-align: center; font-family: sans-serif; background: #f0f0f0; margin: 0; padding-top: 50px; touch-action: manipulation; }
+        #msg { font-size: 20px; color: #333; height: 30px; margin-bottom: 20px; }
+        #enemy { font-size: 100px; transition: 0.5s; display: block; margin: 0 auto; }
+        #number { font-size: 150px; font-weight: bold; color: #ff4444; margin: 20px 0; }
         .dead { transform: scale(0) rotate(360deg); opacity: 0; }
+        #debug { font-size: 12px; color: #999; margin-top: 50px; padding: 10px; }
+        button { padding: 15px 30px; font-size: 18px; border-radius: 10px; border: none; background: #007bff; color: white; }
     </style>
 </head>
 <body>
 
-    <div id="msg">数字をよんでね！</div>
-    <div id="enemy">👾</div> <div id="number"></div> <script>
+    <div id="msg">下のボタンをおしてね！</div>
+    <div id="enemy">👾</div>
+    <div id="number"></div>
+    
+    <button id="startBtn">スタート！</button>
+
+    <div id="debug"></div> <script>
         const enemy = document.getElementById('enemy');
         const numberDisplay = document.getElementById('number');
         const msg = document.getElementById('msg');
+        const debug = document.getElementById('debug');
+        const startBtn = document.getElementById('startBtn');
         
         let targetNumber;
+        let recognition;
 
-        // 1. 新しい数字と敵を出す
-        function spawn() {
-            targetNumber = Math.floor(Math.random() * 10); // 0-9のランダム
-            numberDisplay.innerText = targetNumber;
-            enemy.classList.remove('dead');
-            msg.innerText = "こえをだして！";
+        // 音声認識の準備
+        try {
+            const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+            if (!SpeechRecognition) {
+                debug.innerText = "エラー: お使いのブラウザは音声認識に対応していません。Safariで開いてください。";
+            } else {
+                recognition = new SpeechRecognition();
+                recognition.lang = 'ja-JP';
+                recognition.continuous = true; // 連続して聴き取る
+                recognition.interimResults = false;
+            }
+        } catch (e) {
+            debug.innerText = "準備エラー: " + e.message;
         }
 
-        // 2. 音声認識の設定 (iPhone Safari対応)
-        const SpeechRecognition = window.webkitSpeechRecognition;
-        const recognition = new SpeechRecognition();
-        recognition.lang = 'ja-JP';
-        recognition.continuous = true;
+        function spawn() {
+            targetNumber = Math.floor(Math.random() * 10);
+            numberDisplay.innerText = targetNumber;
+            enemy.classList.remove('dead');
+            msg.innerText = "数字を読んでね！";
+        }
 
-        // 3. 声を聴き取った時の処理
-        recognition.onresult = (event) => {
-            const transcript = event.results[event.results.length - 1][0].transcript;
-            console.log("聞き取った言葉:", transcript);
-
-            if (transcript.includes(targetNumber.toString())) {
-                msg.innerText = "アタリ！せいかい！";
-                enemy.classList.add('dead');
-                setTimeout(spawn, 1500); // 1.5秒後に次へ
-            } else {
-                msg.innerText = `「${transcript}」かな？ おしい！`;
+        // スタートボタンを押した時の処理
+        startBtn.onclick = () => {
+            if (!recognition) return;
+            
+            try {
+                recognition.start();
+                startBtn.style.display = 'none'; // ボタンを隠す
+                spawn();
+                msg.innerText = "きいてるよ...（こえをだしてね）";
+            } catch (e) {
+                debug.innerText = "起動失敗: " + e.message;
             }
         };
 
-        // 画面をタップしたら開始
-        window.onclick = () => {
-            recognition.start();
-            spawn();
-            msg.innerText = "きいてるよ...";
-        };
+        // 声を聞き取った時
+        if (recognition) {
+            recognition.onresult = (event) => {
+                const transcript = event.results[event.results.length - 1][0].transcript;
+                debug.innerText = "聞き取った音: " + transcript;
+
+                if (transcript.includes(targetNumber.toString())) {
+                    msg.innerText = "アタリ！すごい！";
+                    enemy.classList.add('dead');
+                    setTimeout(spawn, 1500);
+                }
+            };
+
+            recognition.onerror = (event) => {
+                debug.innerText = "エラー発生: " + event.error;
+                if (event.error === 'not-allowed') {
+                    msg.innerText = "マイクの使用を許可してください";
+                }
+            };
+
+            // 途切れても自動で再開
+            recognition.onend = () => {
+                recognition.start();
+            };
+        }
     </script>
 </body>
 </html>
