@@ -6,7 +6,7 @@
     <title>怪獣をやっつけろ！</title>
     <style>
         body { text-align: center; font-family: sans-serif; background: #f0f0f0; margin: 0; padding-top: 30px; overflow: hidden; }
-        #msg { font-size: 20px; color: #333; height: 30px; margin-bottom: 10px; font-weight: bold; }
+        #msg { font-size: 22px; color: #333; height: 35px; margin-bottom: 10px; font-weight: bold; }
         #enemy-img { width: 280px; height: auto; transition: 0.3s; display: block; margin: 0 auto; filter: drop-shadow(0 10px 20px rgba(0,0,0,0.3)); }
         #number { font-size: 160px; font-weight: bold; color: #ff4444; margin: 10px 0; }
         
@@ -24,7 +24,10 @@
         }
         .shake-screen { animation: shake 0.5s; }
         
-        #heard-text { position: fixed; bottom: 20px; left: 0; width: 100%; font-size: 14px; color: #888; text-align: center; }
+        #heard-text { position: fixed; bottom: 30px; left: 0; width: 100%; font-size: 18px; color: #666; text-align: center; background: rgba(255,255,255,0.7); padding: 5px 0; }
+        #status-lamp { display: inline-block; width: 12px; height: 12px; border-radius: 50%; background: #ccc; margin-right: 8px; }
+        .mic-on { background: #ff4444 !important; box-shadow: 0 0 10px #ff4444; } /* マイク動作中のランプ */
+
         button { padding: 20px 40px; font-size: 24px; border-radius: 15px; border: none; background: #e74c3c; color: white; box-shadow: 0 6px 0 #c0392b; font-weight: bold; }
     </style>
 </head>
@@ -33,7 +36,7 @@
     <img id="enemy-img" src="kaiju.png" alt="怪獣">
     <div id="number"></div>
     <button id="startBtn">スタート！</button>
-    <div id="heard-text"></div>
+    <div id="heard-text"><span id="status-lamp"></span><span id="transcript-view">準備中...</span></div>
 
     <script>
         const enemyImg = document.getElementById('enemy-img');
@@ -41,12 +44,13 @@
         const msg = document.getElementById('msg');
         const startBtn = document.getElementById('startBtn');
         const body = document.getElementById('body');
-        const heardTextDisplay = document.getElementById('heard-text');
+        const transcriptView = document.getElementById('transcript-view');
+        const statusLamp = document.getElementById('status-lamp');
         
         let targetNumber;
         let recognition;
+        let isLock = false; // 判定とマイクを完全に止めるフラグ
 
-        // 音源の定義
         const seSpawn = new Audio('https://otologic.jp/free/se/bin/pop01.mp3');
         const seCorrect = new Audio('https://otologic.jp/free/se/bin/quiz-correct03.mp3');
         const seExplode = new Audio('https://otologic.jp/free/se/bin/explosion01.mp3');
@@ -57,7 +61,7 @@
             recognition = new SpeechRecognition();
             recognition.lang = 'ja-JP';
             recognition.continuous = true;
-            recognition.interimResults = true; // 画面表示用に途中経過は取る
+            recognition.interimResults = false; // 誤爆防止のため、確定した時だけ判定する
         }
 
         function spawn() {
@@ -65,13 +69,19 @@
             numberDisplay.innerText = targetNumber;
             enemyImg.classList.remove('explode');
             msg.innerText = "数字をよんでね！";
-            heardTextDisplay.innerText = "";
-            seSpawn.play().catch(e => console.log("再生失敗:", e));
+            transcriptView.innerText = "きいています...";
+            
+            // 出現音が終わるまでマイクを無視する
+            isLock = true;
+            seSpawn.play();
+            setTimeout(() => { 
+                isLock = false;
+                statusLamp.classList.add('mic-on');
+            }, 800); // 0.8秒間しっかりガード
         }
 
         startBtn.onclick = () => {
             if (!recognition) return;
-            // 重要：タップ時にすべての音を鳴らしてロック解除
             [seSpawn, seCorrect, seExplode, seIncorrect].forEach(s => {
                 s.play().then(() => { s.pause(); s.currentTime = 0; }).catch(() => {});
             });
@@ -82,37 +92,58 @@
 
         if (recognition) {
             recognition.onresult = (event) => {
-                let interimTranscript = '';
-                let finalTranscript = '';
+                if (isLock) return; // ガード中は何もしない
 
+                let finalTranscript = '';
                 for (let i = event.resultIndex; i < event.results.length; ++i) {
                     if (event.results[i].isFinal) {
                         finalTranscript += event.results[i][0].transcript;
-                    } else {
-                        interimTranscript += event.results[i][0].transcript;
                     }
                 }
 
-                // 画面下の表示は途中経過も含める
-                heardTextDisplay.innerText = "ききとった： " + (finalTranscript || interimTranscript);
+                if (!finalTranscript) return;
 
-                // 【修正ポイント】確定した言葉（finalTranscript）の中に数字があるかだけをチェックする
+                // 診断用：聞き取った文字をそのまま出す
+                transcriptView.innerText = "ききとった： " + finalTranscript;
+
+                // 数字が「完全一致」するか、その数字が含まれているか厳密にチェック
                 if (finalTranscript.includes(targetNumber.toString())) {
+                    isLock = true; // 次の問題までガード
+                    statusLamp.classList.remove('mic-on');
+                    
                     seCorrect.play();
                     setTimeout(() => seExplode.play(), 200);
                     body.classList.add('shake-screen');
                     setTimeout(() => body.classList.remove('shake-screen'), 500);
                     msg.innerText = "ドカーン！たおした！";
                     enemyImg.classList.add('explode');
-                    setTimeout(spawn, 2000);
+                    
+                    setTimeout(spawn, 3000); // 3秒間たっぷり休ませる
                 } 
-                else if (finalTranscript !== "" && /\d/.test(finalTranscript)) {
-                    // 数字を言ったが、正解ではなかった場合のみ「ぶっぶー」
+                else if (/\d/.test(finalTranscript)) {
+                    // 数字を言ったが外れた場合だけ「ぶっぶー」
+                    isLock = true;
+                    statusLamp.classList.remove('mic-on');
                     seIncorrect.play();
                     msg.innerText = "ざんねん！ちがう数字だ！";
+                    setTimeout(() => { 
+                        isLock = false; 
+                        statusLamp.classList.add('mic-on');
+                        msg.innerText = "もう一度よんでね！";
+                        transcriptView.innerText = "きいています...";
+                    }, 1500);
                 }
             };
-            recognition.onend = () => recognition.start();
+
+            recognition.onerror = (e) => {
+                console.log("Recognition Error:", e.error);
+                if (e.error === 'no-speech') return; // 無音エラーは無視
+            };
+
+            recognition.onend = () => {
+                // iPhoneの制限で止まったら再開
+                try { recognition.start(); } catch(e) {}
+            };
         }
     </script>
 </body>
