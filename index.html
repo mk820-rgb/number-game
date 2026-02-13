@@ -6,26 +6,27 @@
     <title>怪獣をやっつけろ！</title>
     <style>
         body { text-align: center; font-family: sans-serif; background: #f0f0f0; margin: 0; padding-top: 30px; overflow: hidden; }
-        #msg { font-size: 20px; color: #333; height: 30px; margin-bottom: 10px; }
+        #msg { font-size: 20px; color: #333; height: 30px; margin-bottom: 10px; font-weight: bold; }
+        #enemy-img { width: 280px; height: auto; transition: 0.3s; display: block; margin: 0 auto; filter: drop-shadow(0 10px 20px rgba(0,0,0,0.3)); }
+        #number { font-size: 160px; font-weight: bold; color: #ff4444; margin: 10px 0; text-shadow: 2px 2px 0 #fff; }
         
-        #enemy-img { width: 200px; height: auto; transition: 0.3s; display: block; margin: 0 auto; }
-        
-        #number { font-size: 150px; font-weight: bold; color: #ff4444; margin: 10px 0; }
-        
-        /* B案：爆発して玉砕するアニメーション */
+        /* 爆発アニメーション */
         @keyframes explodeAction {
             0% { transform: scale(1); opacity: 1; filter: brightness(1); }
-            50% { transform: scale(1.5); opacity: 0.8; filter: brightness(5) hue-rotate(-90deg); } /* 光って膨らむ */
-            100% { transform: scale(2); opacity: 0; } /* 拡大して消える */
+            50% { transform: scale(1.4); opacity: 0.8; filter: brightness(5) hue-rotate(-90deg); }
+            100% { transform: scale(2.5); opacity: 0; }
         }
         .explode { animation: explodeAction 0.6s forwards ease-out; }
 
+        /* 画面を揺らす */
         @keyframes shake {
             0% { transform: translate(0px, 0px); } 25% { transform: translate(-10px, 10px); }
             50% { transform: translate(10px, -10px); } 75% { transform: translate(-10px, 10px); } 100% { transform: translate(0px, 0px); }
         }
         .shake-screen { animation: shake 0.5s; }
-        button { padding: 15px 30px; font-size: 18px; border-radius: 10px; border: none; background: #e74c3c; color: white; box-shadow: 0 4px 0 #c0392b; }
+        
+        button { padding: 20px 40px; font-size: 24px; border-radius: 15px; border: none; background: #e74c3c; color: white; box-shadow: 0 6px 0 #c0392b; font-weight: bold; }
+        button:active { transform: translateY(3px); box-shadow: none; }
     </style>
 </head>
 <body id="body">
@@ -40,36 +41,69 @@
         const msg = document.getElementById('msg');
         const startBtn = document.getElementById('startBtn');
         const body = document.getElementById('body');
-        let targetNumber; let recognition;
-        // 爆発音
-        const seExplode = new Audio('https://otologic.jp/free/se/bin/explosion01.mp3');
+        
+        let targetNumber;
+        let recognition;
+
+        // --- 音の準備 (OtoLogic様のフリー音源を使用) ---
+        const seSpawn = new Audio('https://otologic.jp/free/se/bin/pop01.mp3'); // 出現音
+        const seCorrect = new Audio('https://otologic.jp/free/se/bin/quiz-correct03.mp3'); // ピンポン
+        const seExplode = new Audio('https://otologic.jp/free/se/bin/explosion01.mp3'); // 爆発
+        const seIncorrect = new Audio('https://otologic.jp/free/se/bin/quiz-wrong01.mp3'); // ぶっぶー
 
         const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
         if (SpeechRecognition) {
             recognition = new SpeechRecognition();
-            recognition.lang = 'ja-JP'; recognition.continuous = true;
+            recognition.lang = 'ja-JP';
+            recognition.continuous = true;
         }
+
         function spawn() {
             targetNumber = Math.floor(Math.random() * 10);
             numberDisplay.innerText = targetNumber;
-            enemyImg.classList.remove('explode'); // クラスを戻す
+            enemyImg.classList.remove('explode');
             msg.innerText = "数字をよんで攻撃だ！";
+            
+            // 1. 問題を出すときの音
+            seSpawn.play();
         }
+
         startBtn.onclick = () => {
             if (!recognition) return;
-            seExplode.play().then(() => { seExplode.pause(); seExplode.currentTime = 0; });
-            recognition.start(); startBtn.style.display = 'none'; spawn();
+            
+            // iPhone対策：クリック時に全音源を一度だけ再生(無音)してロック解除
+            [seSpawn, seCorrect, seExplode, seIncorrect].forEach(s => {
+                s.play().then(() => { s.pause(); s.currentTime = 0; });
+            });
+            
+            recognition.start();
+            startBtn.style.display = 'none';
+            spawn();
         };
+
         if (recognition) {
             recognition.onresult = (event) => {
                 const transcript = event.results[event.results.length - 1][0].transcript;
+                
+                // 数字が含まれているかチェック
                 if (transcript.includes(targetNumber.toString())) {
-                    seExplode.play(); // 爆発音
-                    body.classList.add('shake-screen'); setTimeout(() => body.classList.remove('shake-screen'), 500);
+                    // --- 正解のとき ---
+                    seCorrect.play(); // ピンポン！
+                    setTimeout(() => seExplode.play(), 200); // 0.2秒後にドカーン！
+                    
+                    body.classList.add('shake-screen');
+                    setTimeout(() => body.classList.remove('shake-screen'), 500);
                     
                     msg.innerText = "ドカーン！たおした！";
-                    enemyImg.classList.add('explode'); // 爆発アニメーション開始
-                    setTimeout(spawn, 1500);
+                    enemyImg.classList.add('explode');
+                    setTimeout(spawn, 2000); // 次の問題まで少し長めに
+                } else {
+                    // --- 不正解のとき (数字を言ったが外れた場合) ---
+                    // 何か数字を言っているか判定
+                    if (/\d/.test(transcript)) {
+                        seIncorrect.play(); // ぶっぶー！
+                        msg.innerText = "ざんねん！ちがう数字だ！";
+                    }
                 }
             };
             recognition.onend = () => recognition.start();
