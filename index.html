@@ -25,8 +25,19 @@
         }
         .shake-screen { animation: shake 0.5s; }
         
+        /* 聞き取った文字の表示エリア */
+        #heard-text {
+            position: fixed;
+            bottom: 20px;
+            left: 0;
+            width: 100%;
+            font-size: 14px;
+            color: #888; /* 灰色の字 */
+            text-align: center;
+            pointer-events: none;
+        }
+
         button { padding: 20px 40px; font-size: 24px; border-radius: 15px; border: none; background: #e74c3c; color: white; box-shadow: 0 6px 0 #c0392b; font-weight: bold; }
-        button:active { transform: translateY(3px); box-shadow: none; }
     </style>
 </head>
 <body id="body">
@@ -35,27 +46,30 @@
     <div id="number"></div>
     <button id="startBtn">たたかう！</button>
 
+    <div id="heard-text"></div>
+
     <script>
         const enemyImg = document.getElementById('enemy-img');
         const numberDisplay = document.getElementById('number');
         const msg = document.getElementById('msg');
         const startBtn = document.getElementById('startBtn');
         const body = document.getElementById('body');
+        const heardTextDisplay = document.getElementById('heard-text');
         
         let targetNumber;
         let recognition;
 
-        // --- 音の準備 (OtoLogic様のフリー音源を使用) ---
-        const seSpawn = new Audio('https://otologic.jp/free/se/bin/pop01.mp3'); // 出現音
-        const seCorrect = new Audio('https://otologic.jp/free/se/bin/quiz-correct03.mp3'); // ピンポン
-        const seExplode = new Audio('https://otologic.jp/free/se/bin/explosion01.mp3'); // 爆発
-        const seIncorrect = new Audio('https://otologic.jp/free/se/bin/quiz-wrong01.mp3'); // ぶっぶー
+        const seSpawn = new Audio('https://otologic.jp/free/se/bin/pop01.mp3');
+        const seCorrect = new Audio('https://otologic.jp/free/se/bin/quiz-correct03.mp3');
+        const seExplode = new Audio('https://otologic.jp/free/se/bin/explosion01.mp3');
+        const seIncorrect = new Audio('https://otologic.jp/free/se/bin/quiz-wrong01.mp3');
 
         const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
         if (SpeechRecognition) {
             recognition = new SpeechRecognition();
             recognition.lang = 'ja-JP';
             recognition.continuous = true;
+            recognition.interimResults = true; // 喋っている途中の文字も取得する
         }
 
         function spawn() {
@@ -63,19 +77,15 @@
             numberDisplay.innerText = targetNumber;
             enemyImg.classList.remove('explode');
             msg.innerText = "数字をよんで攻撃だ！";
-            
-            // 1. 問題を出すときの音
+            heardTextDisplay.innerText = ""; // 次の問題でリセット
             seSpawn.play();
         }
 
         startBtn.onclick = () => {
             if (!recognition) return;
-            
-            // iPhone対策：クリック時に全音源を一度だけ再生(無音)してロック解除
             [seSpawn, seCorrect, seExplode, seIncorrect].forEach(s => {
                 s.play().then(() => { s.pause(); s.currentTime = 0; });
             });
-            
             recognition.start();
             startBtn.style.display = 'none';
             spawn();
@@ -83,25 +93,30 @@
 
         if (recognition) {
             recognition.onresult = (event) => {
-                const transcript = event.results[event.results.length - 1][0].transcript;
+                let transcript = "";
+                for (let i = event.resultIndex; i < event.results.length; i++) {
+                    transcript += event.results[i][0].transcript;
+                }
                 
-                // 数字が含まれているかチェック
+                // 画面下に聞き取った内容を表示
+                heardTextDisplay.innerText = "ききとった： " + transcript;
+
+                // 確定した結果（isFinal）または一定の長さで判定
                 if (transcript.includes(targetNumber.toString())) {
-                    // --- 正解のとき ---
-                    seCorrect.play(); // ピンポン！
-                    setTimeout(() => seExplode.play(), 200); // 0.2秒後にドカーン！
-                    
+                    seCorrect.play();
+                    setTimeout(() => seExplode.play(), 200);
                     body.classList.add('shake-screen');
                     setTimeout(() => body.classList.remove('shake-screen'), 500);
-                    
                     msg.innerText = "ドカーン！たおした！";
                     enemyImg.classList.add('explode');
-                    setTimeout(spawn, 2000); // 次の問題まで少し長めに
-                } else {
-                    // --- 不正解のとき (数字を言ったが外れた場合) ---
-                    // 何か数字を言っているか判定
-                    if (/\d/.test(transcript)) {
-                        seIncorrect.play(); // ぶっぶー！
+                    // 判定が通ったら表示を少し強調して消す
+                    heardTextDisplay.style.color = "#444"; 
+                    setTimeout(spawn, 2000);
+                } else if (/\d/.test(transcript) && transcript.length > 0) {
+                    // 数字を言ったけど外れている場合
+                    // 短い音節だと誤爆しやすいので、少し様子を見る
+                    if (!transcript.includes(targetNumber.toString()) && event.results[event.results.length-1].isFinal) {
+                        seIncorrect.play();
                         msg.innerText = "ざんねん！ちがう数字だ！";
                     }
                 }
